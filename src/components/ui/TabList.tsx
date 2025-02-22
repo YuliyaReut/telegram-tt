@@ -14,11 +14,13 @@ import usePreviousDeprecated from '../../hooks/usePreviousDeprecated';
 import Tab from './Tab';
 
 import './TabList.scss';
+import { emojiToIconMap } from '../../util/getChatIconPathByEmoji';
 
 export type TabWithProperties = {
   id?: number;
   title: TeactNode;
   badgeCount?: number;
+  emoticon?: keyof typeof emojiToIconMap;
   isBlocked?: boolean;
   isBadgeActive?: boolean;
   contextActions?: MenuItemContextAction[];

@@ -76,6 +76,12 @@ export function selectTheme<T extends GlobalState>(global: T) {
   return theme;
 }
 
+export function selectDisplayedFolders<T extends GlobalState>(global: T) {
+  const { displayedFolders } = global;
+
+  return displayedFolders;
+}
+
 export function selectIsForumPanelOpen<T extends GlobalState>(
   global: T,
   ...[tabId = getCurrentTabId()]: TabArgs<T>

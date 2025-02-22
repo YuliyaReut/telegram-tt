@@ -37,6 +37,7 @@ const SettingsHeader: FC<OwnProps> = ({
 
   const { isMobile } = useAppLayout();
   const [isSignOutDialogOpen, setIsSignOutDialogOpen] = useState(false);
+  const [closingIconName, setClosingIconName] = useState('arrow-left');
 
   const handleMultiClick = useMultiClick(5, () => {
     onScreenSelect(SettingsScreens.Experimental);
@@ -224,6 +225,7 @@ const SettingsHeader: FC<OwnProps> = ({
       case SettingsScreens.FoldersEditFolder:
       case SettingsScreens.FoldersEditFolderFromChatList:
       case SettingsScreens.FoldersEditFolderInvites:
+        setClosingIconName('add');
         return (
           <div className="settings-main-header">
             <h3>{oldLang('FilterEdit')}</h3>
@@ -293,7 +295,7 @@ const SettingsHeader: FC<OwnProps> = ({
         onClick={onReset}
         ariaLabel={oldLang('AccDescrGoBack')}
       >
-        <Icon name="arrow-left" />
+        <Icon name={closingIconName as any} className={closingIconName === 'add' ? 'closing-icon' : undefined}/>
       </Button>
       {renderHeaderContent()}
       <ConfirmDialog

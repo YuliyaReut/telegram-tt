@@ -31,6 +31,9 @@ import FloatingActionButton from '../../../ui/FloatingActionButton';
 import InputText from '../../../ui/InputText';
 import ListItem from '../../../ui/ListItem';
 import Spinner from '../../../ui/Spinner';
+import { chatFolderIcons, getEmojiByIcon, getIconPathByEmoji } from '../../../../util/getChatIconPathByEmoji';
+import DropdownMenu from '../../../ui/DropdownMenu';
+import { IconName } from '../../../../types/icons';
 
 type OwnProps = {
   state: FoldersState;
@@ -94,6 +97,7 @@ const SettingsFoldersEdit: FC<OwnProps & StateProps> = ({
 
   const [isIncludedChatsListExpanded, setIsIncludedChatsListExpanded] = useState(false);
   const [isExcludedChatsListExpanded, setIsExcludedChatsListExpanded] = useState(false);
+  const [folderIcon, setFolderIcon] = useState(getIconPathByEmoji(state.folder.emoticon) || 'folder-badge');
 
   useEffect(() => {
     if (isRemoved) {
@@ -155,6 +159,12 @@ const SettingsFoldersEdit: FC<OwnProps & StateProps> = ({
     const { currentTarget } = event;
     dispatch({ type: 'setTitle', payload: currentTarget.value.trim() });
   }, [dispatch]);
+
+  const handleIconChange = useCallback((folderIcon: IconName) => {
+    setFolderIcon(folderIcon);
+    dispatch({ type: 'setFolderIcon', payload: getEmojiByIcon(folderIcon) });
+  }, [dispatch]);
+
 
   const handleSubmit = useCallback(() => {
     dispatch({ type: 'setIsLoading', payload: true });
@@ -279,6 +289,14 @@ const SettingsFoldersEdit: FC<OwnProps & StateProps> = ({
     );
   }
 
+  const DropdownTarget: FC<{ onTrigger: () => void; isMenuOpen?: boolean }> = useMemo(() => {
+    return ({ onTrigger, isMenuOpen }) => (
+      <button type="button" className="settings-folder-icon" onClick={onTrigger}>
+        <Icon name={folderIcon as IconName} className='folder-icon'/>
+      </button>
+    );
+  }, [folderIcon]);
+
   return (
     <div className="settings-fab-wrapper">
       <div className="settings-content no-border custom-scroll">
@@ -296,13 +314,27 @@ const SettingsFoldersEdit: FC<OwnProps & StateProps> = ({
             </p>
           )}
 
-          <InputText
-            className="mb-0"
-            label={lang('FilterNameHint')}
-            value={state.folder.title.text}
-            onChange={handleChange}
-            error={state.error && state.error === ERROR_NO_TITLE ? ERROR_NO_TITLE : undefined}
-          />
+          <div className="settings-folder">
+            <InputText
+              className="mb-0"
+              label={lang('FilterNameHint')}
+              value={state.folder.title.text}
+              onChange={handleChange}
+              error={state.error && state.error === ERROR_NO_TITLE ? ERROR_NO_TITLE : undefined}
+            />
+
+            <DropdownMenu
+              trigger={DropdownTarget}
+              className={'chat-folder-icons-dropdown'}
+            >
+              {chatFolderIcons
+                .map((icon) => (
+                  <div className='folder-icon-wrapper' onClick={() => handleIconChange(icon as IconName)}>
+                     <Icon name={icon as IconName} className='folder-icon'/>
+                  </div>
+                ))}
+            </DropdownMenu>
+          </div>
         </div>
 
         {!isOnlyInvites && (

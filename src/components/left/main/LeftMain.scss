@@ -1,3 +1,22 @@
+#LeftColumn-wrapper {
+  display: flex;
+  flex-direction: row;
+}
+
+#LeftSideBarMenuChatFolders {
+  display: flex;
+  flex-direction: column;
+  min-width: 5rem;
+  width: 5rem;
+  height: 100%;
+  background-color: #212121;
+
+  .main-button {
+    border-radius: 0;
+    width: 100%;
+  }
+}
+
 #LeftColumn-main {
   height: 100%;
   position: relative;

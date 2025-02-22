@@ -51,10 +51,10 @@
 
   @media (max-width: 925px) {
     position: fixed;
-    left: 0;
+    left: 5rem;
     top: 0;
     height: calc(var(--vh, 1vh) * 100);
-    width: 26.5rem !important;
+    width: 21.5rem !important;
 
     transform: translate3d(-5rem, 0, 0);
     transition: transform var(--layer-transition);

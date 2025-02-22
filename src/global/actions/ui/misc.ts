@@ -581,6 +581,13 @@ addActionHandler('openLimitReachedModal', (global, actions, payload): ActionRetu
   }, tabId);
 });
 
+addActionHandler('setDisplayedFolders', (global, actions, payload): ActionReturnType => {
+  return {
+    ...global,
+    displayedFolders: payload.displayedFolders
+  };
+});
+
 addActionHandler('closeLimitReachedModal', (global, actions, payload): ActionReturnType => {
   const { tabId = getCurrentTabId() } = payload || {};
 

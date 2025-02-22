@@ -91,6 +91,7 @@ import SnapEffectContainer from './visualEffects/SnapEffectContainer';
 import WaveContainer from './visualEffects/WaveContainer';
 
 import './Main.scss';
+import { FoldersProvider } from '../left/FoldersContext';
 
 export interface OwnProps {
   isMobile?: boolean;
@@ -536,7 +537,9 @@ const Main = ({
 
   return (
     <div ref={containerRef} id="Main" className={className}>
-      <LeftColumn ref={leftColumnRef} />
+      <FoldersProvider>
+        <LeftColumn ref={leftColumnRef} />
+      </FoldersProvider>
       <MiddleColumn leftColumnRef={leftColumnRef} isMobile={isMobile} />
       <RightColumn isMobile={isMobile} />
       <MediaViewer isOpen={isMediaViewerOpen} />

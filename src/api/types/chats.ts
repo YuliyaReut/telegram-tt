@@ -1,3 +1,4 @@
+import { emojiToIconMap } from '../../util/getChatIconPathByEmoji';
 import type { ApiBotCommand } from './bots';
 import type {
   ApiChatReactions, ApiFormattedText, ApiInputMessageReplyInfo, ApiPhoto, ApiStickerSet,
@@ -214,7 +215,7 @@ export interface ApiChatFolder {
   title: ApiFormattedText;
   noTitleAnimations?: true;
   description?: string;
-  emoticon?: string;
+  emoticon?: keyof typeof emojiToIconMap;
   contacts?: true;
   nonContacts?: true;
   groups?: true;

@@ -11,6 +11,10 @@
 
   .left-header {
     padding-right: 0.8125rem;
+
+    .closing-icon {
+      transform: rotate(45deg);
+    }
   }
 
   .self-profile .ProfileInfo {
@@ -95,6 +99,49 @@
 
   .input-group {
     width: 100%;
+  }
+
+  .settings-folder {
+    position: relative;
+
+    .form-control {
+      padding-right: 3rem;
+    }
+
+    .menu-container {
+      right: 0;
+      display: flex;
+      flex-wrap: wrap;
+
+      &.not-shown {
+        display: none;
+      }
+    }
+
+    .settings-folder-icon {
+      position: absolute;
+      bottom: 0.3rem;
+      right: 0.5rem;
+      display: flex;
+      border: 0;
+      background: none;
+      cursor: pointer;
+
+      &:focus {
+        outline: none;
+      }
+    }
+
+    .folder-icon {
+      font-size: 2rem;
+      color: #b7babd;
+    }
+
+    .folder-icon-wrapper {
+      flex: 0 0 25%;
+      padding: .5rem;
+      cursor: pointer;
+    }
   }
 }
 

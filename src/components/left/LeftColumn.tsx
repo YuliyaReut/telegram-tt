@@ -9,7 +9,7 @@ import type { FoldersActions } from '../../hooks/reducers/useFoldersReducer';
 import type { ReducerAction } from '../../hooks/useReducer';
 import { LeftColumnContent, SettingsScreens } from '../../types';
 
-import { selectCurrentChat, selectIsForumPanelOpen, selectTabState } from '../../global/selectors';
+import { selectCurrentChat, selectDisplayedFolders, selectIsForumPanelOpen, selectTabState } from '../../global/selectors';
 import captureEscKeyListener from '../../util/captureEscKeyListener';
 import { captureControlledSwipe } from '../../util/swipeController';
 import {
@@ -30,6 +30,12 @@ import NewChat from './newChat/NewChat.async';
 import Settings from './settings/Settings.async';
 
 import './LeftColumn.scss';
+import ActionBar from '../ui/ActionBar';
+import MainButton from './main/MainButton';
+import useForumPanelRender from '../../hooks/useForumPanelRender';
+import useAppLayout from '../../hooks/useAppLayout';
+import { useFoldersContext } from './FoldersContext';
+import { ApiChatFolder } from '../../api/types';
 
 interface OwnProps {
   ref: RefObject<HTMLDivElement>;
@@ -38,6 +44,7 @@ interface OwnProps {
 type StateProps = {
   searchQuery?: string;
   searchDate?: number;
+  displayedFolders: ApiChatFolder[];
   isFirstChatFolderActive: boolean;
   shouldSkipHistoryAnimations?: boolean;
   currentUserId?: string;
@@ -52,6 +59,7 @@ type StateProps = {
   isClosingSearch?: boolean;
   archiveSettings: GlobalState['archiveSettings'];
   isArchivedStoryRibbonShown?: boolean;
+  activeChatFolder: number;
 };
 
 enum ContentType {
@@ -75,6 +83,7 @@ function LeftColumn({
   isFirstChatFolderActive,
   shouldSkipHistoryAnimations,
   currentUserId,
+  activeChatFolder,
   hasPasscode,
   nextSettingsScreen,
   nextFoldersAction,
@@ -97,12 +106,26 @@ function LeftColumn({
     clearTwoFaError,
     openChat,
     requestNextSettingsScreen,
+    setActiveChatFolder,
+    closeForumPanel
   } = getActions();
+
+  const { isMobile } = useAppLayout();
+
+  const { getAllFolders } = useFoldersContext();
 
   const [content, setContent] = useState<LeftColumnContent>(LeftColumnContent.ChatList);
   const [settingsScreen, setSettingsScreen] = useState(SettingsScreens.Main);
   const [contactsFilter, setContactsFilter] = useState<string>('');
   const [foldersState, foldersDispatch] = useFoldersReducer();
+
+  const {
+    isAnimationStarted,
+  } = useForumPanelRender(isForumPanelOpen);
+  const isForumPanelRendered = isForumPanelOpen && content === LeftColumnContent.ChatList;
+  const isForumPanelVisible = isForumPanelRendered && isAnimationStarted;
+
+  const shouldRenderFolders = getAllFolders() && getAllFolders().length > 1 && !isMobile;
 
   // Used to reset child components in background.
   const [lastResetTime, setLastResetTime] = useState<number>(0);
@@ -524,48 +547,87 @@ function LeftColumn({
         );
       default:
         return (
-          <LeftMain
-            content={content}
-            isClosingSearch={isClosingSearch}
-            searchQuery={searchQuery}
-            searchDate={searchDate}
-            contactsFilter={contactsFilter}
-            foldersDispatch={foldersDispatch}
-            onContentChange={setContent}
-            onSearchQuery={handleSearchQuery}
-            onSettingsScreenSelect={handleSettingsScreenSelect}
-            onReset={handleReset}
-            shouldSkipTransition={shouldSkipHistoryAnimations}
-            isAppUpdateAvailable={isAppUpdateAvailable}
-            isElectronUpdateAvailable={isElectronUpdateAvailable}
-            isForumPanelOpen={isForumPanelOpen}
-            onTopicSearch={handleTopicSearch}
-          />
+            <LeftMain
+              content={content}
+              isClosingSearch={isClosingSearch}
+              searchQuery={searchQuery}
+              searchDate={searchDate}
+              contactsFilter={contactsFilter}
+              foldersDispatch={foldersDispatch}
+              onContentChange={setContent}
+              onSearchQuery={handleSearchQuery}
+              onSettingsScreenSelect={handleSettingsScreenSelect}
+              onReset={handleReset}
+              shouldSkipTransition={shouldSkipHistoryAnimations}
+              isAppUpdateAvailable={isAppUpdateAvailable}
+              isElectronUpdateAvailable={isElectronUpdateAvailable}
+              isForumPanelOpen={isForumPanelOpen}
+              onTopicSearch={handleTopicSearch}
+            />
         );
     }
   }
 
+  const handleSelectSettings = useLastCallback(() => {
+    setContent(LeftColumnContent.Settings);
+  });
+
+  const handleSelectContacts = useLastCallback(() => {
+    setContent(LeftColumnContent.Contacts);
+  });
+
+  const handleSelectArchived = useLastCallback(() => {
+    setContent(LeftColumnContent.Archived);
+    closeForumPanel();
+  });
+
+  const handleSwitchItem = useLastCallback((index: number) => {
+    setActiveChatFolder({ activeChatFolder: index }, { forceOnHeavyAnimation: true });
+  });
+
   return (
-    <Transition
-      ref={ref}
-      name={shouldSkipHistoryAnimations ? 'none' : LAYERS_ANIMATION_NAME}
-      renderCount={RENDER_COUNT}
-      activeKey={contentType}
-      shouldCleanup
-      cleanupExceptionKey={ContentType.Main}
-      shouldWrap
-      wrapExceptionKey={ContentType.Main}
-      id="LeftColumn"
-      withSwipeControl
-    >
-      {renderContent}
-    </Transition>
+    <div id="LeftColumnContainer">
+      {shouldRenderFolders && <div id="LeftSideBarMenuChatFolders">
+        <MainButton
+          shouldHideSearch={isForumPanelVisible}
+          content={content}
+          shouldSkipTransition={shouldSkipHistoryAnimations}
+          onSelectSettings={handleSelectSettings}
+          onSelectContacts={handleSelectContacts}
+          onSelectArchived={handleSelectArchived}
+          onReset={handleReset}
+        />
+        <ActionBar
+          items={getAllFolders()}
+          activeItem={activeChatFolder}
+          onSwitchItem={handleSwitchItem}
+          contextRootElementSelector="#LeftColumn"
+        >
+        </ActionBar>
+      </div>}
+
+      <Transition
+        ref={ref}
+        name={shouldSkipHistoryAnimations ? 'none' : LAYERS_ANIMATION_NAME}
+        renderCount={RENDER_COUNT}
+        activeKey={contentType}
+        shouldCleanup
+        cleanupExceptionKey={ContentType.Main}
+        shouldWrap
+        wrapExceptionKey={ContentType.Main}
+        id="LeftColumn"
+        withSwipeControl
+      >
+        {renderContent}
+      </Transition>
+    </div>
   );
 }
 
 export default memo(withGlobal<OwnProps>(
   (global): StateProps => {
     const tabState = selectTabState(global);
+    const displayedFolders = selectDisplayedFolders(global);
     const {
       globalSearch: {
         query,
@@ -602,8 +664,10 @@ export default memo(withGlobal<OwnProps>(
       currentUserId,
       hasPasscode,
       nextSettingsScreen,
+      displayedFolders,
       nextFoldersAction,
       isChatOpen,
+      activeChatFolder,
       isAppUpdateAvailable,
       isElectronUpdateAvailable,
       isForumPanelOpen,

@@ -95,6 +95,8 @@ export type GlobalState = {
   initialUnreadNotifications?: number;
   shouldShowContextMenuHint?: boolean;
 
+  displayedFolders: ApiChatFolder[];
+
   audioPlayer: {
     lastPlaybackRate: number;
     isLastPlaybackRateActive?: boolean;

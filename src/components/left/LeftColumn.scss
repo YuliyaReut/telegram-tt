@@ -1,7 +1,9 @@
 #NewChat {
   height: 100%;
 }
-
+#LeftColumnContainer {
+  display: flex;
+}
 .left-header {
   height: var(--header-height);
   padding: 0.375rem 0.8125rem 0.5rem 0.8125rem;
@@ -22,8 +24,11 @@
     white-space: nowrap;
   }
 
+  #MainButton {
+    margin-right: 0.625rem;
+  }
+
   .SearchInput {
-    margin-left: 0.625rem;
     max-width: calc(100% - 3.25rem);
 
     @media (max-width: 600px) {

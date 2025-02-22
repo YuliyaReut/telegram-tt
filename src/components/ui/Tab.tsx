@@ -14,11 +14,9 @@ import { useFastClick } from '../../hooks/useFastClick';
 import useLastCallback from '../../hooks/useLastCallback';
 
 import Icon from '../common/icons/Icon';
-import Menu from './Menu';
-import MenuItem from './MenuItem';
-import MenuSeparator from './MenuSeparator';
 
 import './Tab.scss';
+import ContextMenu from './ContextMenu';
 
 type OwnProps = {
   className?: string;
@@ -147,38 +145,17 @@ const Tab: FC<OwnProps> = ({
         {isBlocked && <Icon name="lock-badge" className="blocked" />}
         <i className="platform" />
       </span>
-
-      {contextActions && contextMenuAnchor !== undefined && (
-        <Menu
-          isOpen={isContextMenuOpen}
-          anchor={contextMenuAnchor}
+      {contextActions && contextMenuAnchor !== undefined &&
+        <ContextMenu
+          contextActions={contextActions}
+          contextMenuAnchor={contextMenuAnchor}
+          isContextMenuOpen={isContextMenuOpen}
+          handleContextMenuClose={handleContextMenuClose}
+          handleContextMenuHide={handleContextMenuHide}
           getTriggerElement={getTriggerElement}
           getRootElement={getRootElement}
-          getMenuElement={getMenuElement}
-          getLayout={getLayout}
-          className="Tab-context-menu"
-          autoClose
-          onClose={handleContextMenuClose}
-          onCloseAnimationEnd={handleContextMenuHide}
-          withPortal
-        >
-          {contextActions.map((action) => (
-            ('isSeparator' in action) ? (
-              <MenuSeparator key={action.key || 'separator'} />
-            ) : (
-              <MenuItem
-                key={action.title}
-                icon={action.icon}
-                destructive={action.destructive}
-                disabled={!action.handler}
-                onClick={action.handler}
-              >
-                {action.title}
-              </MenuItem>
-            )
-          ))}
-        </Menu>
-      )}
+        />
+      }
     </div>
   );
 };

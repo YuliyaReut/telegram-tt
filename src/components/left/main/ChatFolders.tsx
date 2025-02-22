@@ -32,13 +32,14 @@ import StoryRibbon from '../../story/StoryRibbon';
 import TabList from '../../ui/TabList';
 import Transition from '../../ui/Transition';
 import ChatList from './ChatList';
+import useAppLayout from '../../../hooks/useAppLayout';
+import { useFoldersContext } from '../FoldersContext';
 
 type OwnProps = {
   onSettingsScreenSelect: (screen: SettingsScreens) => void;
   foldersDispatch: FolderEditDispatch;
   onLeftColumnContentChange: (content: LeftColumnContent) => void;
   shouldHideFolderTabs?: boolean;
-  isForumPanelOpen?: boolean;
 };
 
 type StateProps = {
@@ -69,7 +70,6 @@ const ChatFolders: FC<OwnProps & StateProps> = ({
   orderedFolderIds,
   activeChatFolder,
   currentUserId,
-  isForumPanelOpen,
   shouldSkipHistoryAnimations,
   maxFolders,
   maxChatLists,
@@ -94,6 +94,8 @@ const ChatFolders: FC<OwnProps & StateProps> = ({
 
   // eslint-disable-next-line no-null/no-null
   const transitionRef = useRef<HTMLDivElement>(null);
+
+  const { addFolder } = useFoldersContext();
 
   const lang = useLang();
 
@@ -196,18 +198,21 @@ const ChatFolders: FC<OwnProps & StateProps> = ({
         });
       }
 
-      return {
+      const newFolder = {
         id,
         title: renderTextWithEntities({
           text: title.text,
           entities: title.entities,
           noCustomEmojiPlayback: folder.noTitleAnimations,
         }),
+        emoticon: folder.emoticon,
         badgeCount: folderCountersById[id]?.chatsCount,
         isBadgeActive: Boolean(folderCountersById[id]?.notificationsCount),
         isBlocked,
         contextActions: contextActions?.length ? contextActions : undefined,
       } satisfies TabWithProperties;
+      addFolder(newFolder);
+      return newFolder;
     });
   }, [
     displayedFolders, maxFolders, folderCountersById, lang, chatFoldersById, maxChatLists, folderInvitesById,
@@ -230,7 +235,7 @@ const ChatFolders: FC<OwnProps & StateProps> = ({
   }, [activeChatFolder, folderTabs, setActiveChatFolder]);
 
   useEffect(() => {
-    if (!IS_TOUCH_ENV || !folderTabs?.length || isForumPanelOpen) {
+    if (!IS_TOUCH_ENV || !folderTabs?.length || shouldHideFolderTabs) {
       return undefined;
     }
 
@@ -251,7 +256,7 @@ const ChatFolders: FC<OwnProps & StateProps> = ({
         return false;
       }),
     });
-  }, [activeChatFolder, folderTabs, isForumPanelOpen, setActiveChatFolder]);
+  }, [activeChatFolder, folderTabs, shouldHideFolderTabs, setActiveChatFolder]);
 
   const isNotInFirstFolderRef = useRef();
   isNotInFirstFolderRef.current = !isInFirstFolder;
@@ -311,7 +316,7 @@ const ChatFolders: FC<OwnProps & StateProps> = ({
         folderType={isFolder ? 'folder' : 'all'}
         folderId={isFolder ? activeFolder.id : undefined}
         isActive={isActive}
-        isForumPanelOpen={isForumPanelOpen}
+        isForumPanelOpen={shouldHideFolderTabs}
         foldersDispatch={foldersDispatch}
         onSettingsScreenSelect={onSettingsScreenSelect}
         onLeftColumnContentChange={onLeftColumnContentChange}
@@ -323,6 +328,7 @@ const ChatFolders: FC<OwnProps & StateProps> = ({
   }
 
   const shouldRenderFolders = folderTabs && folderTabs.length > 1;
+  const { isMobile } = useAppLayout();
 
   return (
     <div
@@ -334,7 +340,7 @@ const ChatFolders: FC<OwnProps & StateProps> = ({
       )}
     >
       {shouldRenderStoryRibbon && <StoryRibbon isClosing={isStoryRibbonClosing} />}
-      {shouldRenderFolders ? (
+      {shouldRenderFolders && isMobile ? (
         <TabList
           contextRootElementSelector="#LeftColumn"
           tabs={folderTabs}
