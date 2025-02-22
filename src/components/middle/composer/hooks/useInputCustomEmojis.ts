@@ -38,7 +38,7 @@ type CustomEmojiPlayer = {
 };
 
 export default function useInputCustomEmojis(
-  getHtml: Signal<string>,
+  isMessage: boolean,
   inputRef: React.RefObject<HTMLDivElement>,
   sharedCanvasRef: React.RefObject<HTMLCanvasElement>,
   sharedCanvasHqRef: React.RefObject<HTMLCanvasElement>,
@@ -141,7 +141,7 @@ export default function useInputCustomEmojis(
   }, []);
 
   useEffect(() => {
-    if (!getHtml() || !inputRef.current || !sharedCanvasRef.current || !isActive || !isReady) {
+    if (!isMessage || !inputRef.current || !sharedCanvasRef.current || !isActive || !isReady) {
       clearPlayers(Array.from(playersById.current.keys()));
       return;
     }
@@ -150,7 +150,7 @@ export default function useInputCustomEmojis(
     requestMeasure(() => {
       synchronizeElements();
     });
-  }, [getHtml, synchronizeElements, inputRef, clearPlayers, sharedCanvasRef, isActive, isReady]);
+  }, [isMessage, synchronizeElements, inputRef, clearPlayers, sharedCanvasRef, isActive, isReady]);
 
   useLayoutEffect(() => {
     document.documentElement.style.setProperty('--input-custom-emoji-filter', colorFilter || 'none');

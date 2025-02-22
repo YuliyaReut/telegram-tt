@@ -5,6 +5,10 @@
 
   align-items: flex-end;
 
+  .form-control.hide-caret {
+    caret-color: transparent !important;
+  }
+
   .select-mode-active + .middle-column-footer & {
     position: absolute;
     padding-right: 2rem;

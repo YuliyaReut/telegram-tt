@@ -29,6 +29,7 @@ import { removeAllSelections } from '../../../util/selection';
 import { openSystemFilesDialog } from '../../../util/systemFilesDialog';
 import getFilesFromDataTransferItems from './helpers/getFilesFromDataTransferItems';
 import { getHtmlTextLength } from './helpers/getHtmlTextLength';
+import { MessageNode } from './hooks/useTextEditorState';
 
 import useAppLayout from '../../../hooks/useAppLayout';
 import useContextMenuHandlers from '../../../hooks/useContextMenuHandlers';
@@ -67,6 +68,10 @@ export type OwnProps = {
   editingMessage?: ApiMessage;
   messageListType?: MessageListType;
   getHtml: Signal<string>;
+  nodes: MessageNode[],
+  setNodes: (nodes: MessageNode[]) => void;
+  caretPosition: {start: number, end: number};
+  setCaretPosition: (next: {start: number, end: number}) => void;
   canShowCustomSendMenu?: boolean;
   isReady: boolean;
   isForMessage?: boolean;
@@ -113,6 +118,10 @@ const AttachmentModal: FC<OwnProps & StateProps> = ({
   threadId,
   attachments,
   getHtml,
+  nodes,
+  setNodes,
+  caretPosition,
+  setCaretPosition,
   editingMessage,
   canShowCustomSendMenu,
   captionLimit,
@@ -682,10 +691,12 @@ const AttachmentModal: FC<OwnProps & StateProps> = ({
               customEmojiPrefix="attachment"
               isReady={isReady}
               isActive={isOpen}
-              getHtml={getHtml}
+              nodes={nodes}
+              setNodes={setNodes}
+              caretPosition={caretPosition}
+              setCaretPosition={setCaretPosition}
               editableInputId={EDITABLE_INPUT_MODAL_ID}
               placeholder={lang('AddCaption')}
-              onUpdate={onCaptionUpdate}
               onSend={handleSendClick}
               onScroll={handleCaptionScroll}
               canAutoFocus={Boolean(isReady && isForCurrentMessageList && attachments.length)}

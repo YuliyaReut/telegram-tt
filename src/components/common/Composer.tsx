@@ -175,6 +175,18 @@ import Icon from './icons/Icon';
 import ReactionAnimatedEmoji from './reactions/ReactionAnimatedEmoji';
 
 import './Composer.scss';
+import {
+  useEditorState,
+  MessageNode,
+  insertNode,
+  getHTML,
+  getNodesPlainTextLength,
+  deleteSelectedNodes,
+  getMessageNodeLength,
+  CaretPosition,
+} from '../middle/composer/hooks/useTextEditorState';
+import { convertApiFormattedTextToAST } from './helpers/convertApiFormattedTextToAST';
+import { parseASTAsFormattedText } from '../../util/parseASTAsFormattedText';
 
 type ComposerType = 'messageList' | 'story';
 
@@ -416,6 +428,16 @@ const Composer: FC<OwnProps & StateProps> = ({
 
   const lang = useOldLang();
 
+  const defaultNode: MessageNode = { type: 'text', content: '' };
+  const defaultCaretPosition: CaretPosition = { start: 0, end: 0 };
+
+  const {
+    nodes,
+    setNodes,
+    caretPosition,
+    setCaretPosition
+  } = useEditorState([defaultNode], defaultCaretPosition);
+
   // eslint-disable-next-line no-null/no-null
   const inputRef = useRef<HTMLDivElement>(null);
 
@@ -513,56 +535,61 @@ const Composer: FC<OwnProps & StateProps> = ({
     }
   }, [hasWebPagePreview]);
 
-  const insertHtmlAndUpdateCursor = useLastCallback((newHtml: string, inInputId: string = editableInputId) => {
-    if (inInputId === editableInputId && isComposerBlocked) return;
-    const selection = window.getSelection()!;
-    let messageInput: HTMLDivElement;
-    if (inInputId === editableInputId) {
-      messageInput = document.querySelector<HTMLDivElement>(editableInputCssSelector)!;
-    } else {
-      messageInput = document.getElementById(inInputId) as HTMLDivElement;
-    }
-
-    if (selection.rangeCount) {
-      const selectionRange = selection.getRangeAt(0);
-      if (isSelectionInsideInput(selectionRange, inInputId)) {
-        insertHtmlInSelection(newHtml);
-        messageInput.dispatchEvent(new Event('input', { bubbles: true }));
-        return;
-      }
-    }
-
-    setHtml(`${getHtml()}${newHtml}`);
-
-    // If selection is outside of input, set cursor at the end of input
-    requestNextMutation(() => {
-      focusEditableElement(messageInput);
-    });
-  });
 
   const insertTextAndUpdateCursor = useLastCallback((
-    text: string, inInputId: string = editableInputId,
+    text: string
   ) => {
-    const newHtml = renderText(text, ['escape_html', 'emoji_html', 'br_html'])
-      .join('')
-      .replace(/\u200b+/g, '\u200b');
-    insertHtmlAndUpdateCursor(newHtml, inInputId);
+    let updatedNodes = deleteSelectedNodes(nodes, caretPosition);
+    const newNode: MessageNode = {
+      type: 'emoji',
+      content: text
+    }
+    setNodes(insertNode(updatedNodes, newNode, caretPosition.start as number));
+    setCaretPosition({start: caretPosition.start as number + 1, end: caretPosition.start as number + 1 });
   });
 
   const insertFormattedTextAndUpdateCursor = useLastCallback((
-    text: ApiFormattedText, inInputId: string = editableInputId,
+    text: ApiFormattedText
   ) => {
-    const newHtml = getTextWithEntitiesAsHtml(text);
-    insertHtmlAndUpdateCursor(newHtml, inInputId);
+    const pastedNodes = convertApiFormattedTextToAST(text);
+
+    let pos = caretPosition.start;
+    let updatedNodes: MessageNode[] = deleteSelectedNodes(nodes, caretPosition);
+
+    pastedNodes.forEach((node) => {
+      updatedNodes = insertNode(updatedNodes, node, pos);
+      pos += getMessageNodeLength(node);
+    });
+
+    const pastedTextLength = getNodesPlainTextLength(pastedNodes);
+    setCaretPosition({
+      start: caretPosition.start + pastedTextLength,
+      end: caretPosition.start + pastedTextLength,
+    });
+
+    setNodes(updatedNodes);
   });
 
-  const insertCustomEmojiAndUpdateCursor = useLastCallback((emoji: ApiSticker, inInputId: string = editableInputId) => {
-    insertHtmlAndUpdateCursor(buildCustomEmojiHtml(emoji), inInputId);
+  const insertCustomEmojiAndUpdateCursor = useLastCallback((emoji: ApiSticker) => {
+    let updatedNodes = deleteSelectedNodes(nodes, caretPosition);
+
+    const newNode: MessageNode = {
+      type: 'customEmoji',
+      content: emoji.emoji,
+      attributes: emoji
+    }
+    setNodes(insertNode(updatedNodes, newNode, caretPosition.start as number));
+    setCaretPosition({start: caretPosition.start as number + 1, end: caretPosition.start as number + 1 })
   });
+
+  useEffect(() => {
+    // it is a very very timeless solution while the AST model is not yet integrated everywhere
+    setHtml(getHTML(nodes));
+  }, [nodes, setNodes]);
 
   const insertNextText = useLastCallback(() => {
     if (!nextText) return;
-    insertFormattedTextAndUpdateCursor(nextText, editableInputId);
+    insertFormattedTextAndUpdateCursor(nextText);
     setNextText(undefined);
   });
 
@@ -943,7 +970,7 @@ const Composer: FC<OwnProps & StateProps> = ({
       return;
     }
 
-    const { text, entities } = parseHtmlAsFormattedText(getHtml());
+    const { text, entities } = parseASTAsFormattedText(nodes);
     if (!text && !attachmentsToSend.length) {
       return;
     }
@@ -981,6 +1008,9 @@ const Composer: FC<OwnProps & StateProps> = ({
     requestMeasure(() => {
       resetComposer();
     });
+
+    setNodes([defaultNode]);
+    setCaretPosition(defaultCaretPosition);
   });
 
   const handleSendAttachmentsFromModal = useLastCallback((
@@ -1033,7 +1063,7 @@ const Composer: FC<OwnProps & StateProps> = ({
       }
     }
 
-    const { text, entities } = parseHtmlAsFormattedText(getHtml());
+    const { text, entities } = parseASTAsFormattedText(nodes);
 
     if (currentAttachments.length) {
       sendAttachments({
@@ -1073,6 +1103,9 @@ const Composer: FC<OwnProps & StateProps> = ({
         webPageMediaSize: attachmentSettings.webPageMediaSize,
         webPageUrl: hasWebPagePreview ? webPagePreview!.url : undefined,
       });
+
+      setNodes([defaultNode]);
+      setCaretPosition(defaultCaretPosition);
     }
 
     if (isForwarding) {
@@ -1168,7 +1201,7 @@ const Composer: FC<OwnProps & StateProps> = ({
         focusEditableElement(messageInput, true);
       });
     }
-  }, [editableInputId, requestedDraft, resetOpenChatWithDraft, setHtml]);
+  }, [editableInputId, requestedDraft, resetOpenChatWithDraft, setNodes]);
 
   useEffect(() => {
     if (requestedDraftFiles?.length) {
@@ -1184,7 +1217,7 @@ const Composer: FC<OwnProps & StateProps> = ({
       return;
     }
 
-    insertCustomEmojiAndUpdateCursor(emoji, inInputId);
+    insertCustomEmojiAndUpdateCursor(emoji);
   });
 
   const handleCustomEmojiSelectAttachmentModal = useLastCallback((emoji: ApiSticker) => {
@@ -1349,7 +1382,7 @@ const Composer: FC<OwnProps & StateProps> = ({
   }, [isComposerBlocked, setHtml, attachments]);
 
   const insertTextAndUpdateCursorAttachmentModal = useLastCallback((text: string) => {
-    insertTextAndUpdateCursor(text, EDITABLE_INPUT_MODAL_ID);
+    insertTextAndUpdateCursor(text);
   });
 
   const removeSymbol = useLastCallback((inInputId = editableInputId) => {
@@ -1642,6 +1675,10 @@ const Composer: FC<OwnProps & StateProps> = ({
         canShowCustomSendMenu={canShowCustomSendMenu}
         attachments={attachments}
         getHtml={getHtml}
+        nodes={nodes}
+        setNodes={setNodes}
+        caretPosition={caretPosition}
+        setCaretPosition={setCaretPosition}
         isReady={isReady}
         shouldSuggestCompression={shouldSuggestCompression}
         shouldForceCompression={shouldForceCompression}
@@ -1837,7 +1874,10 @@ const Composer: FC<OwnProps & StateProps> = ({
             threadId={threadId}
             isReady={isReady}
             isActive={!hasAttachments}
-            getHtml={getHtml}
+            nodes={nodes}
+            setNodes={setNodes}
+            caretPosition={caretPosition}
+            setCaretPosition={setCaretPosition}
             placeholder={
               activeVoiceRecording && windowWidth <= SCREEN_WIDTH_TO_HIDE_PLACEHOLDER
                 ? ''
@@ -1852,7 +1892,6 @@ const Composer: FC<OwnProps & StateProps> = ({
             noFocusInterception={hasAttachments}
             shouldSuppressFocus={isMobile && isSymbolMenuOpen}
             shouldSuppressTextFormatter={isEmojiTooltipOpen || isMentionTooltipOpen || isInlineBotTooltipOpen}
-            onUpdate={setHtml}
             onSend={onSend}
             onSuppressedFocus={closeSymbolMenu}
             onFocus={markInputHasFocus}

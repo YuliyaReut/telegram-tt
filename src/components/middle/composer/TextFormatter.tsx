@@ -4,15 +4,12 @@ import React, {
 } from '../../../lib/teact/teact';
 
 import type { IAnchorPosition } from '../../../types';
-import { ApiMessageEntityTypes } from '../../../api/types';
+import { NodeFormat } from './hooks/useTextEditorState';
 
-import { EDITABLE_INPUT_ID } from '../../../config';
 import buildClassName from '../../../util/buildClassName';
 import captureEscKeyListener from '../../../util/captureEscKeyListener';
-import { ensureProtocol } from '../../../util/ensureProtocol';
 import getKeyFromEvent from '../../../util/getKeyFromEvent';
 import stopEvent from '../../../util/stopEvent';
-import { INPUT_CUSTOM_EMOJI_SELECTOR } from './helpers/customEmoji';
 
 import useFlag from '../../../hooks/useFlag';
 import useLastCallback from '../../../hooks/useLastCallback';
@@ -24,6 +21,8 @@ import Icon from '../../common/icons/Icon';
 import Button from '../../ui/Button';
 
 import './TextFormatter.scss';
+import { ensureProtocol } from '../../../util/ensureProtocol';
+import { EDITABLE_INPUT_ID } from '../../../config';
 
 export type OwnProps = {
   isOpen: boolean;
@@ -31,6 +30,7 @@ export type OwnProps = {
   selectedRange?: Range;
   setSelectedRange: (range: Range) => void;
   onClose: () => void;
+  onFormat: (format: NodeFormat, data?: Record<string, any>) => void;
 };
 
 interface ISelectedTextFormats {
@@ -40,6 +40,7 @@ interface ISelectedTextFormats {
   strikethrough?: boolean;
   monospace?: boolean;
   spoiler?: boolean;
+  link?: boolean;
 }
 
 const TEXT_FORMAT_BY_TAG_NAME: Record<string, keyof ISelectedTextFormats> = {
@@ -52,14 +53,13 @@ const TEXT_FORMAT_BY_TAG_NAME: Record<string, keyof ISelectedTextFormats> = {
   CODE: 'monospace',
   SPAN: 'spoiler',
 };
-const fragmentEl = document.createElement('div');
 
 const TextFormatter: FC<OwnProps> = ({
   isOpen,
   anchorPosition,
   selectedRange,
-  setSelectedRange,
   onClose,
+  onFormat
 }) => {
   // eslint-disable-next-line no-null/no-null
   const containerRef = useRef<HTMLDivElement>(null);
@@ -68,9 +68,7 @@ const TextFormatter: FC<OwnProps> = ({
   const { shouldRender, transitionClassNames } = useShowTransitionDeprecated(isOpen);
   const [isLinkControlOpen, openLinkControl, closeLinkControl] = useFlag();
   const [linkUrl, setLinkUrl] = useState('');
-  const [isEditingLink, setIsEditingLink] = useState(false);
   const [inputClassName, setInputClassName] = useState<string | undefined>();
-  const [selectedTextFormats, setSelectedTextFormats] = useState<ISelectedTextFormats>({});
 
   useEffect(() => (isOpen ? captureEscKeyListener(onClose) : undefined), [isOpen, onClose]);
   useVirtualBackdrop(
@@ -85,14 +83,12 @@ const TextFormatter: FC<OwnProps> = ({
       linkUrlInputRef.current!.focus();
     } else {
       setLinkUrl('');
-      setIsEditingLink(false);
     }
   }, [isLinkControlOpen]);
 
   useEffect(() => {
     if (!shouldRender) {
       closeLinkControl();
-      setSelectedTextFormats({});
       setInputClassName(undefined);
     }
   }, [closeLinkControl, shouldRender]);
@@ -113,48 +109,8 @@ const TextFormatter: FC<OwnProps> = ({
       parentElement = parentElement.parentElement;
     }
 
-    setSelectedTextFormats(selectedFormats);
   }, [isOpen, selectedRange, openLinkControl]);
 
-  const restoreSelection = useLastCallback(() => {
-    if (!selectedRange) {
-      return;
-    }
-
-    const selection = window.getSelection();
-    if (selection) {
-      selection.removeAllRanges();
-      selection.addRange(selectedRange);
-    }
-  });
-
-  const updateSelectedRange = useLastCallback(() => {
-    const selection = window.getSelection();
-    if (selection) {
-      setSelectedRange(selection.getRangeAt(0));
-    }
-  });
-
-  const getSelectedText = useLastCallback((shouldDropCustomEmoji?: boolean) => {
-    if (!selectedRange) {
-      return undefined;
-    }
-    fragmentEl.replaceChildren(selectedRange.cloneContents());
-    if (shouldDropCustomEmoji) {
-      fragmentEl.querySelectorAll(INPUT_CUSTOM_EMOJI_SELECTOR).forEach((el) => {
-        el.replaceWith(el.getAttribute('alt')!);
-      });
-    }
-    return fragmentEl.innerHTML;
-  });
-
-  const getSelectedElement = useLastCallback(() => {
-    if (!selectedRange) {
-      return undefined;
-    }
-
-    return selectedRange.commonAncestorContainer.parentElement;
-  });
 
   function updateInputStyles() {
     const input = linkUrlInputRef.current;
@@ -184,175 +140,27 @@ const TextFormatter: FC<OwnProps> = ({
     updateInputStyles();
   }
 
-  function getFormatButtonClassName(key: keyof ISelectedTextFormats) {
-    if (selectedTextFormats[key]) {
-      return 'active';
+  const handleFormatting = useLastCallback((format: NodeFormat) => {
+    if (format === 'link') {
+
+      const formattedLinkUrl = (ensureProtocol(linkUrl) || '').split('%').map(encodeURI).join('%');
+      onFormat(format, { url: formattedLinkUrl});
+    } else {
+      onFormat(format);
     }
 
-    if (key === 'monospace' || key === 'strikethrough') {
-      if (Object.keys(selectedTextFormats).some(
-        (fKey) => fKey !== key && Boolean(selectedTextFormats[fKey as keyof ISelectedTextFormats]),
-      )) {
-        return 'disabled';
-      }
-    } else if (selectedTextFormats.monospace || selectedTextFormats.strikethrough) {
-      return 'disabled';
-    }
-
-    return undefined;
-  }
-
-  const handleSpoilerText = useLastCallback(() => {
-    if (selectedTextFormats.spoiler) {
-      const element = getSelectedElement();
-      if (
-        !selectedRange
-        || !element
-        || element.dataset.entityType !== ApiMessageEntityTypes.Spoiler
-        || !element.textContent
-      ) {
-        return;
-      }
-
-      element.replaceWith(element.textContent);
-      setSelectedTextFormats((selectedFormats) => ({
-        ...selectedFormats,
-        spoiler: false,
-      }));
-
-      return;
-    }
-
-    const text = getSelectedText();
-    document.execCommand(
-      'insertHTML', false, `<span class="spoiler" data-entity-type="${ApiMessageEntityTypes.Spoiler}">${text}</span>`,
-    );
-    onClose();
-  });
-
-  const handleBoldText = useLastCallback(() => {
-    setSelectedTextFormats((selectedFormats) => {
-      // Somehow re-applying 'bold' command to already bold text doesn't work
-      document.execCommand(selectedFormats.bold ? 'removeFormat' : 'bold');
-      Object.keys(selectedFormats).forEach((key) => {
-        if ((key === 'italic' || key === 'underline') && Boolean(selectedFormats[key])) {
-          document.execCommand(key);
-        }
-      });
-
-      updateSelectedRange();
-      return {
-        ...selectedFormats,
-        bold: !selectedFormats.bold,
-      };
-    });
-  });
-
-  const handleItalicText = useLastCallback(() => {
-    document.execCommand('italic');
-    updateSelectedRange();
-    setSelectedTextFormats((selectedFormats) => ({
-      ...selectedFormats,
-      italic: !selectedFormats.italic,
-    }));
-  });
-
-  const handleUnderlineText = useLastCallback(() => {
-    document.execCommand('underline');
-    updateSelectedRange();
-    setSelectedTextFormats((selectedFormats) => ({
-      ...selectedFormats,
-      underline: !selectedFormats.underline,
-    }));
-  });
-
-  const handleStrikethroughText = useLastCallback(() => {
-    if (selectedTextFormats.strikethrough) {
-      const element = getSelectedElement();
-      if (
-        !selectedRange
-        || !element
-        || element.tagName !== 'DEL'
-        || !element.textContent
-      ) {
-        return;
-      }
-
-      element.replaceWith(element.textContent);
-      setSelectedTextFormats((selectedFormats) => ({
-        ...selectedFormats,
-        strikethrough: false,
-      }));
-
-      return;
-    }
-
-    const text = getSelectedText();
-    document.execCommand('insertHTML', false, `<del>${text}</del>`);
-    onClose();
-  });
-
-  const handleMonospaceText = useLastCallback(() => {
-    if (selectedTextFormats.monospace) {
-      const element = getSelectedElement();
-      if (
-        !selectedRange
-        || !element
-        || element.tagName !== 'CODE'
-        || !element.textContent
-      ) {
-        return;
-      }
-
-      element.replaceWith(element.textContent);
-      setSelectedTextFormats((selectedFormats) => ({
-        ...selectedFormats,
-        monospace: false,
-      }));
-
-      return;
-    }
-
-    const text = getSelectedText(true);
-    document.execCommand('insertHTML', false, `<code class="text-entity-code" dir="auto">${text}</code>`);
-    onClose();
-  });
-
-  const handleLinkUrlConfirm = useLastCallback(() => {
-    const formattedLinkUrl = (ensureProtocol(linkUrl) || '').split('%').map(encodeURI).join('%');
-
-    if (isEditingLink) {
-      const element = getSelectedElement();
-      if (!element || element.tagName !== 'A') {
-        return;
-      }
-
-      (element as HTMLAnchorElement).href = formattedLinkUrl;
-
-      onClose();
-
-      return;
-    }
-
-    const text = getSelectedText(true);
-    restoreSelection();
-    document.execCommand(
-      'insertHTML',
-      false,
-      `<a href=${formattedLinkUrl} class="text-entity-link" dir="auto">${text}</a>`,
-    );
     onClose();
   });
 
   const handleKeyDown = useLastCallback((e: KeyboardEvent) => {
     const HANDLERS_BY_KEY: Record<string, AnyToVoidFunction> = {
       k: openLinkControl,
-      b: handleBoldText,
-      u: handleUnderlineText,
-      i: handleItalicText,
-      m: handleMonospaceText,
-      s: handleStrikethroughText,
-      p: handleSpoilerText,
+      b: () => handleFormatting('bold'),
+      u: () => handleFormatting('underline'),
+      i: () => handleFormatting('italic'),
+      m: () => handleFormatting('monospace'),
+      s: () => handleFormatting('strikethrough'),
+      p: () => handleFormatting('spoiler'),
     };
 
     const handler = HANDLERS_BY_KEY[getKeyFromEvent(e)];
@@ -382,7 +190,7 @@ const TextFormatter: FC<OwnProps> = ({
 
   function handleContainerKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (e.key === 'Enter' && isLinkControlOpen) {
-      handleLinkUrlConfirm();
+      handleFormatting('link');
       e.preventDefault();
     }
   }
@@ -419,8 +227,7 @@ const TextFormatter: FC<OwnProps> = ({
         <Button
           color="translucent"
           ariaLabel="Spoiler text"
-          className={getFormatButtonClassName('spoiler')}
-          onClick={handleSpoilerText}
+          onClick={() => handleFormatting('spoiler')}
         >
           <Icon name="eye-closed" />
         </Button>
@@ -428,40 +235,35 @@ const TextFormatter: FC<OwnProps> = ({
         <Button
           color="translucent"
           ariaLabel="Bold text"
-          className={getFormatButtonClassName('bold')}
-          onClick={handleBoldText}
+          onClick={() => handleFormatting('bold')}
         >
           <Icon name="bold" />
         </Button>
         <Button
           color="translucent"
           ariaLabel="Italic text"
-          className={getFormatButtonClassName('italic')}
-          onClick={handleItalicText}
+          onClick={() => handleFormatting('italic')}
         >
           <Icon name="italic" />
         </Button>
         <Button
           color="translucent"
           ariaLabel="Underlined text"
-          className={getFormatButtonClassName('underline')}
-          onClick={handleUnderlineText}
+          onClick={() => handleFormatting('underline')}
         >
           <Icon name="underlined" />
         </Button>
         <Button
           color="translucent"
           ariaLabel="Strikethrough text"
-          className={getFormatButtonClassName('strikethrough')}
-          onClick={handleStrikethroughText}
+          onClick={() => handleFormatting('strikethrough')}
         >
           <Icon name="strikethrough" />
         </Button>
         <Button
           color="translucent"
           ariaLabel="Monospace text"
-          className={getFormatButtonClassName('monospace')}
-          onClick={handleMonospaceText}
+          onClick={() => handleFormatting('monospace')}
         >
           <Icon name="monospace" />
         </Button>
@@ -501,7 +303,7 @@ const TextFormatter: FC<OwnProps> = ({
               color="translucent"
               ariaLabel={lang('Save')}
               className="color-primary"
-              onClick={handleLinkUrlConfirm}
+              onClick={() => handleFormatting('link')}
             >
               <Icon name="check" />
             </Button>

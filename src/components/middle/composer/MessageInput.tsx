@@ -2,7 +2,7 @@ import type { ChangeEvent, RefObject } from 'react';
 import type { FC } from '../../../lib/teact/teact';
 import React, {
   getIsHeavyAnimating,
-  memo, useEffect, useLayoutEffect,
+  memo, useCallback, useEffect, useLayoutEffect,
   useRef, useState,
 } from '../../../lib/teact/teact';
 import { getActions, withGlobal } from '../../../global';
@@ -25,6 +25,23 @@ import {
 } from '../../../util/windowEnvironment';
 import renderText from '../../common/helpers/renderText';
 import { isSelectionInsideInput } from './helpers/selection';
+import {
+  applyFormatting,
+  deleteNode,
+  getHTML,
+  insertNode,
+  isRangeUniformlyFormatted,
+  NodeFormat,
+  placeCaretAtEnd,
+  removeFormatting,
+  restoreSelection,
+  MessageNode,
+  getNodesPlainText,
+  deleteSelectedNodes,
+  getNodesPlainTextLength
+} from './hooks/useTextEditorState';
+import { HistoryManager } from '../../common/helpers/historyManager';
+import useGetSelectionRange from '../../../hooks/useGetSelectionRange';
 
 import useAppLayout from '../../../hooks/useAppLayout';
 import useDerivedState from '../../../hooks/useDerivedState';
@@ -57,7 +74,6 @@ type OwnProps = {
   editableInputId?: string;
   isReady: boolean;
   isActive: boolean;
-  getHtml: Signal<string>;
   placeholder: string;
   timedPlaceholderLangKey?: string;
   timedPlaceholderDate?: number;
@@ -67,7 +83,6 @@ type OwnProps = {
   shouldSuppressFocus?: boolean;
   shouldSuppressTextFormatter?: boolean;
   canSendPlainText?: boolean;
-  onUpdate: (html: string) => void;
   onSuppressedFocus?: () => void;
   onSend: () => void;
   onScroll?: (event: React.UIEvent<HTMLElement>) => void;
@@ -75,6 +90,10 @@ type OwnProps = {
   onFocus?: NoneToVoidFunction;
   onBlur?: NoneToVoidFunction;
   isNeedPremium?: boolean;
+  nodes: MessageNode[];
+  setNodes: (next: MessageNode[]) => void;
+  caretPosition: {start: number, end: number};
+  setCaretPosition: (next: {start: number, end: number}) => void;
 };
 
 type StateProps = {
@@ -91,7 +110,6 @@ const TAB_INDEX_PRIORITY_TIMEOUT = 2000;
 const SELECTION_RECALCULATE_DELAY_MS = 260;
 const TEXT_FORMATTER_SAFE_AREA_PX = 140;
 // For some reason Safari inserts `<br>` after user removes text from input
-const SAFARI_BR = '<br>';
 const IGNORE_KEYS = [
   'Esc', 'Escape', 'Enter', 'PageUp', 'PageDown', 'Meta', 'Alt', 'Ctrl', 'ArrowDown', 'ArrowUp', 'Control', 'Shift',
 ];
@@ -120,7 +138,6 @@ const MessageInput: FC<OwnProps & StateProps> = ({
   editableInputId,
   isReady,
   isActive,
-  getHtml,
   placeholder,
   timedPlaceholderLangKey,
   timedPlaceholderDate,
@@ -134,13 +151,16 @@ const MessageInput: FC<OwnProps & StateProps> = ({
   isSelectModeActive,
   canPlayAnimatedEmojis,
   messageSendKeyCombo,
-  onUpdate,
   onSuppressedFocus,
   onSend,
   onScroll,
   onFocus,
   onBlur,
   isNeedPremium,
+  nodes,
+  setNodes,
+  caretPosition,
+  setCaretPosition,
 }) => {
   const {
     editLastMessage,
@@ -175,9 +195,14 @@ const MessageInput: FC<OwnProps & StateProps> = ({
   const [selectedRange, setSelectedRange] = useState<Range>();
   const [isTextFormatterDisabled, setIsTextFormatterDisabled] = useState<boolean>(false);
   const { isMobile } = useAppLayout();
+  const getSelectionRange = useGetSelectionRange('#' + (editableInputId || EDITABLE_INPUT_ID));
   const isMobileDevice = isMobile && (IS_IOS || IS_ANDROID);
 
   const [shouldDisplayTimer, setShouldDisplayTimer] = useState(false);
+  const [isHideCaret, setIsHideCaret] = useState(false);
+  const [lastWasBoundary, setLastWasBoundary] = useState(true);
+
+  const history = useRef(new HistoryManager([{ type: 'text', content: '' }]));
 
   useEffect(() => {
     setShouldDisplayTimer(Boolean(timedPlaceholderLangKey && timedPlaceholderDate));
@@ -188,7 +213,7 @@ const MessageInput: FC<OwnProps & StateProps> = ({
   });
 
   useInputCustomEmojis(
-    getHtml,
+    !!getNodesPlainTextLength(nodes),
     inputRef,
     sharedCanvasRef,
     sharedCanvasHqRef,
@@ -202,13 +227,18 @@ const MessageInput: FC<OwnProps & StateProps> = ({
   const maxInputHeight = isAttachmentModalInput
     ? MAX_ATTACHMENT_MODAL_INPUT_HEIGHT
     : isStoryInput ? MAX_STORY_MODAL_INPUT_HEIGHT : (isMobile ? 256 : 416);
+
   const updateInputHeight = useLastCallback((willSend = false) => {
     requestForcedReflow(() => {
       const scroller = inputRef.current!.closest<HTMLDivElement>(`.${SCROLLER_CLASS}`)!;
       const currentHeight = Number(scroller.style.height.replace('px', ''));
       const clone = scrollerCloneRef.current!;
       const { scrollHeight } = clone;
-      const newHeight = Math.min(scrollHeight, maxInputHeight);
+      let inputHeight = maxInputHeight;
+      if(inputRef.current) {
+        inputHeight = Math.min(+inputRef.current.style.height.replace('px', ''), maxInputHeight)
+      }
+      const newHeight = Math.min(scrollHeight, inputHeight);
 
       if (newHeight === currentHeight) {
         return undefined;
@@ -238,30 +268,27 @@ const MessageInput: FC<OwnProps & StateProps> = ({
   useLayoutEffect(() => {
     if (!isAttachmentModalInput) return;
     updateInputHeight(false);
-  }, [isAttachmentModalInput, updateInputHeight]);
-
-  const htmlRef = useRef(getHtml());
-  useLayoutEffect(() => {
-    const html = isActive ? getHtml() : '';
-
-    if (html !== inputRef.current!.innerHTML) {
-      inputRef.current!.innerHTML = html;
-    }
-
-    if (html !== cloneRef.current!.innerHTML) {
-      cloneRef.current!.innerHTML = html;
-    }
-
-    if (html !== htmlRef.current) {
-      htmlRef.current = html;
-
-      updateInputHeight(!html);
-    }
-  }, [getHtml, isActive, updateInputHeight]);
+  }, [nodes, isAttachmentModalInput, updateInputHeight]);
 
   const chatIdRef = useRef(chatId);
   chatIdRef.current = chatId;
+
+  function updateCursorPosition() {
+    const selection = window.getSelection();
+
+    if (selection && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const preRange = range.cloneRange();
+      preRange.selectNodeContents(inputRef!.current!);
+      preRange.setEnd(range.startContainer, range.startOffset);
+      const offset = preRange.toString().length;
+      setCaretPosition({ start: offset, end: offset });
+    }
+  }
+
   const focusInput = useLastCallback(() => {
+    updateCursorPosition();
+
     if (!inputRef.current || isNeedPremium) {
       return;
     }
@@ -379,12 +406,72 @@ const MessageInput: FC<OwnProps & StateProps> = ({
     document.addEventListener('keydown', handleCloseContextMenu);
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+  const handleKeyUp = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      updateCursorPosition();
+      return;
+    }
+  }
+
+  useEffect(() => {
+    if (getNodesPlainTextLength(nodes) === 0) {
+      history.current.saveState(nodes, true);
+    }
+  }, []);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    // managing history
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      e.preventDefault();
+      if (e.shiftKey) {
+        const newState = history.current.redo();
+        if (newState) {
+          setNodes(newState);
+        }
+      } else {
+        if (!lastWasBoundary) {
+          history.current.saveState(nodes, true);
+          setLastWasBoundary(true);
+        }
+        const newState = history.current.undo();
+        if (newState) {
+          setNodes(newState);
+        }
+      }
+      requestAnimationFrame(() => {
+        placeCaretAtEnd(inputRef.current as HTMLDivElement);
+      });
+      return;
+    }
+
+    // moving the cursor to new line
+    if (e.key === 'Enter' && e.shiftKey) {
+      e.preventDefault();
+      const selection = getSelectionRange();
+      if (!selection) return;
+      const position = selection.startOffset;
+
+      let updatedNodes = deleteSelectedNodes(nodes, { start: selection.startOffset, end: selection.endOffset});
+
+      const newNode: MessageNode = {
+        type: 'text',
+        content: '\n',
+      }
+      updatedNodes = insertNode(updatedNodes, newNode,  position);
+
+      const newPosition = position + 1;
+      setCaretPosition({ start: newPosition, end: newPosition });
+      setNodes(updatedNodes);
+
+      updateInputHeight(true);
+      return;
+    }
+
     // https://levelup.gitconnected.com/javascript-events-handlers-keyboard-and-load-events-1b3e46a6b0c3#1960
     const { isComposing } = e;
 
-    const html = getHtml();
-    if (!isComposing && !html && (e.metaKey || e.ctrlKey)) {
+    const plainText = getNodesPlainText(nodes);
+    if (!isComposing && !plainText && (e.metaKey || e.ctrlKey)) {
       const targetIndexDelta = e.key === 'ArrowDown' ? 1 : e.key === 'ArrowUp' ? -1 : undefined;
       if (targetIndexDelta) {
         e.preventDefault();
@@ -407,18 +494,105 @@ const MessageInput: FC<OwnProps & StateProps> = ({
         closeTextFormatter();
         onSend();
       }
-    } else if (!isComposing && e.key === 'ArrowUp' && !html && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    } else if (!isComposing && e.key === 'ArrowUp' && !plainText && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       editLastMessage();
     } else {
       e.target.addEventListener('keyup', processSelectionWithTimeout, { once: true });
     }
-  }
+
+    // handling caret and AST model
+    const selection = caretPosition;
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      setLastWasBoundary(false);
+      const position = selection.start;
+
+      let updatedNodes = deleteSelectedNodes(nodes, selection);
+
+      setIsHideCaret(true);
+
+      const newNode: MessageNode = {
+        type: 'text',
+        content: e.key,
+      }
+      updatedNodes = insertNode(updatedNodes, newNode, position);
+      const newPosition = position + 1;
+
+      if (e.key === ' ') {
+        history.current.saveState(nodes, true);
+        setLastWasBoundary(true);
+      }
+      setNodes(updatedNodes);
+      setCaretPosition({ start: newPosition, end: newPosition });
+      return;
+    }
+
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      let updatedNodes = nodes;
+
+      if (selection.start !== selection.end) {
+        setIsHideCaret(true);
+        updatedNodes = deleteNode(updatedNodes, selection);
+      } else if (selection.start > 0) {
+        setIsHideCaret(true);
+        updatedNodes = deleteNode(updatedNodes, { start: selection.start - 1, end: selection.start });
+      } else if (selection.start === 0) {
+        const editorEl = inputRef.current;
+        if(!editorEl) return;
+        placeCaretAtEnd(editorEl);
+        debouncedUpdateInputHeight(false);
+      }
+      if(selection.start !== selection.end) {
+        setCaretPosition(selection)
+      } else {
+        const newPosition = Math.max(0, selection.start - 1);
+        setCaretPosition({ start: newPosition, end: newPosition });
+      }
+
+      history.current.saveState(updatedNodes, true);
+      setLastWasBoundary(false);
+
+      setNodes(updatedNodes);
+    }
+  }, [nodes, setNodes, insertNode, deleteNode, getSelectionRange, caretPosition]);
+
+  const debouncedUpdateInputHeight = useCallback(
+    debounce((willSend = false) => updateInputHeight(willSend), 500),
+    [updateInputHeight]
+  );
+
+  useLayoutEffect(() => {
+    const editorEl = inputRef.current;
+    if (!editorEl) return;
+
+    const savedSelection = caretPosition;
+    const html = isActive ? getHTML(nodes) : '';
+    editorEl.innerHTML = html;
+
+    const isStartPositionSaved = savedSelection?.start === 0 && savedSelection.end === 0;
+    if (savedSelection && !isStartPositionSaved) {
+      if(savedSelection.start === 0) {
+        const editorEl = inputRef.current;
+        if(!editorEl) return;
+        placeCaretAtEnd(editorEl);
+      } else {
+        restoreSelection(editorEl, savedSelection);
+      }
+    } else {
+      placeCaretAtEnd(editorEl);
+    }
+    setIsHideCaret(false);
+    debouncedUpdateInputHeight(false);
+  }, [nodes, isActive, updateInputHeight]);
+
+
 
   function handleChange(e: ChangeEvent<HTMLDivElement>) {
-    const { innerHTML, textContent } = e.currentTarget;
+    e.preventDefault();
 
-    onUpdate(innerHTML === SAFARI_BR ? '' : innerHTML);
+    const { innerHTML, textContent } = e.currentTarget;
 
     // Reset focus on the input to remove any active styling when input is cleared
     if (
@@ -552,15 +726,40 @@ const MessageInput: FC<OwnProps & StateProps> = ({
     };
   }, [shouldSuppressFocus]);
 
-  const isTouched = useDerivedState(() => Boolean(isActive && getHtml()), [isActive, getHtml]);
+  const isTouched = useDerivedState(() => Boolean(isActive && nodes.length), [isActive, nodes]);
 
   const className = buildClassName(
     'form-control allow-selection',
     isTouched && 'touched',
     shouldSuppressFocus && 'focus-disabled',
+    isHideCaret && 'hide-caret'
   );
 
   const inputScrollerContentClass = buildClassName('input-scroller-content', isNeedPremium && 'is-need-premium');
+
+  const handleFormatting = useCallback((format: NodeFormat, data?: Record<string, any>) => {
+    const selRabge = getSelectionRange();
+
+    setCaretPosition({ start: selRabge!.startOffset, end: selRabge!.endOffset });
+    if (selRabge && selRabge.startOffset !== selRabge.endOffset) {
+      const isUniform = isRangeUniformlyFormatted(nodes, selRabge.startOffset, selRabge.endOffset, format);
+      if (isUniform) {
+        history.current.saveState(nodes, true);
+        setNodes(removeFormatting(nodes, selRabge.startOffset, selRabge.endOffset, format));
+      } else {
+        history.current.saveState(nodes, true);
+        setNodes(applyFormatting(nodes, selRabge.startOffset, selRabge.endOffset, format, data));
+      }
+    }
+  }, [getSelectionRange, nodes, setNodes]);
+
+
+  const onHandleBlur = () => {
+    history.current.clearHistory();
+    if (!isNeedPremium) {
+      return onBlur;
+    }
+  }
 
   return (
     <div id={id} onClick={shouldSuppressFocus ? onSuppressedFocus : undefined} dir={lang.isRtl ? 'rtl' : undefined}>
@@ -581,12 +780,13 @@ const MessageInput: FC<OwnProps & StateProps> = ({
             onClick={focusInput}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
+            onKeyUp={handleKeyUp}
             onMouseDown={handleMouseDown}
             onContextMenu={IS_ANDROID ? handleAndroidContextMenu : undefined}
             onTouchCancel={IS_ANDROID ? processSelectionWithTimeout : undefined}
             aria-label={placeholder}
             onFocus={!isNeedPremium ? onFocus : undefined}
-            onBlur={!isNeedPremium ? onBlur : undefined}
+            onBlur={!isNeedPremium ? onHandleBlur : undefined}
           />
           {!forcedPlaceholder && (
             <span
@@ -636,6 +836,7 @@ const MessageInput: FC<OwnProps & StateProps> = ({
         selectedRange={selectedRange}
         setSelectedRange={setSelectedRange}
         onClose={handleCloseTextFormatter}
+        onFormat={handleFormatting}
       />
       {forcedPlaceholder && <span className="forced-placeholder">{renderText(forcedPlaceholder!)}</span>}
     </div>
