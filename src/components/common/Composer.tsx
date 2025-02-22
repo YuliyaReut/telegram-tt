@@ -1066,6 +1066,8 @@ const Composer: FC<OwnProps & StateProps> = ({
     const { text, entities } = parseASTAsFormattedText(nodes);
 
     if (currentAttachments.length) {
+      emitRotateBackgroundEvent();
+
       sendAttachments({
         attachments: currentAttachments,
         scheduledAt,
@@ -1077,6 +1079,8 @@ const Composer: FC<OwnProps & StateProps> = ({
     if (!text && !isForwarding) {
       return;
     }
+
+    emitRotateBackgroundEvent();
 
     if (!validateTextLength(text)) return;
 
@@ -1597,8 +1601,14 @@ const Composer: FC<OwnProps & StateProps> = ({
   const handleSendScheduled = useLastCallback(() => {
     requestCalendar((scheduledAt) => {
       handleMessageSchedule({}, scheduledAt, currentMessageList!);
+      emitRotateBackgroundEvent();
     });
   });
+
+  const emitRotateBackgroundEvent = () => {
+    const event = new CustomEvent('rotateBackground');
+    document.dispatchEvent(event);
+  };
 
   const handleSendSilent = useLastCallback(() => {
     sendSilent();

@@ -11,13 +11,16 @@
   &::before {
     content: "";
     position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    right: 0;
+    top: -25%;
+    left: -50%;
+    width: 200%;
+    height: 150%;
     background-position: center;
     background-repeat: no-repeat;
     background-size: cover;
+    transition: transform 0.5s ease-in-out;
+    transform: rotate(var(--rotation-angle));
+    transform-origin: center;
   }
 
   :global(html.theme-light) &:not(.customBgImage)::before {
@@ -52,8 +55,6 @@
   @media screen and (min-width: 1276px) {
     :global(body:not(.no-page-transitions)) &:not(.customBgImage)::before {
       overflow: hidden;
-      transform: scale(1);
-      transform-origin: left center;
     }
   }
 

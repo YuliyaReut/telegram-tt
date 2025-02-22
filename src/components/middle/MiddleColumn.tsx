@@ -284,6 +284,16 @@ function MiddleColumn({
     isMobile,
   );
 
+  const [rotationState, setRotationState] = useState(0);
+
+  useEffect(() => {
+    document.addEventListener('rotateBackground', handleRotateBackground);
+  }, []);
+
+  const handleRotateBackground = () => {
+    setRotationState((prevRotationState) => prevRotationState + 22.5);
+  };
+
   useEffect(() => {
     return chatId
       ? captureEscKeyListener(() => {
@@ -503,7 +513,10 @@ function MiddleColumn({
       )}
       <div
         className={bgClassName}
-        style={customBackgroundValue ? `--custom-background: ${customBackgroundValue}` : undefined}
+        style={buildStyle(
+                  `--rotation-angle: ${rotationState}deg`,
+                  customBackgroundValue ? `--custom-background: ${customBackgroundValue}` : undefined
+                )}
       />
       <div id="middle-column-portals" />
       {Boolean(renderingChatId && renderingThreadId) && (
