@@ -11,6 +11,7 @@ import type {
   ApiConfig,
   ApiCountry,
   ApiCountryCode,
+  ApiEmojiStatusType,
   ApiGroupCall,
   ApiLanguage,
   ApiMessage,
@@ -24,7 +25,6 @@ import type {
   ApiQuickReply,
   ApiReaction,
   ApiReactionKey,
-  ApiSavedGifts,
   ApiSavedReactionTag,
   ApiSession,
   ApiSponsoredMessage,
@@ -178,7 +178,6 @@ export type GlobalState = {
 
   peers: {
     profilePhotosById: Record<string, ApiPeerPhotos>;
-    giftsById: Record<string, ApiSavedGifts>;
   };
 
   chats: {
@@ -217,14 +216,11 @@ export type GlobalState = {
     forDiscussionIds?: string[];
     // Obtained from GetFullChat / GetFullChannel
     fullInfoById: Record<string, ApiChatFullInfo>;
-    similarChannelsById: Record<
-    string,
-    {
-      shouldShowInChat: boolean;
-      similarChannelIds: string[];
-      count: number;
-    }
-    >;
+    similarChannelsById: Partial<Record<string, {
+      isExpanded: boolean;
+      similarChannelIds?: string[];
+      count?: number;
+    }>>;
 
     similarBotsById: Record<string, SimilarBotsInfo>;
   };
@@ -367,6 +363,11 @@ export type GlobalState = {
   defaultStatusIconsId?: string;
   premiumGifts?: ApiStickerSet;
   emojiKeywords: Record<string, EmojiKeywords | undefined>;
+
+  collectibleEmojiStatuses?: {
+    statuses: ApiEmojiStatusType[];
+    hash?: string;
+  };
 
   gifs: {
     saved: {

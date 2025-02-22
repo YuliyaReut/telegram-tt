@@ -50,6 +50,7 @@ import type {
   BotsPrivacyType,
   PrivacyVisibility,
 } from '../../api/types';
+import type { ApiEmojiStatusCollectible, ApiEmojiStatusType } from '../../api/types/users';
 import type { ApiCredentials } from '../../components/payment/PaymentModal';
 import type { FoldersActions } from '../../hooks/reducers/useFoldersReducer';
 import type { ReducerAction } from '../../hooks/useReducer';
@@ -59,8 +60,8 @@ import type {
   CallSound,
   ChatListType,
   ConfettiParams,
+  GiftProfileFilterOptions,
   GlobalSearchContent,
-  IAlbum,
   IAnchorPosition,
   ISettings,
   IThemeSettings,
@@ -91,7 +92,7 @@ import type { WebApp, WebAppModalStateType, WebAppOutboundEvent } from '../../ty
 import type { DownloadableMedia } from '../helpers';
 import type { TabState } from './tabState';
 
-type WithTabId = { tabId?: number };
+export type WithTabId = { tabId?: number };
 
 export interface ActionPayloads {
   // system
@@ -189,7 +190,7 @@ export interface ActionPayloads {
     currentPassword: string;
     email: string;
     onSuccess: VoidFunction;
-  };
+  } & WithTabId;
   clearPassword: {
     currentPassword: string;
     onSuccess: VoidFunction;
@@ -477,6 +478,10 @@ export interface ActionPayloads {
     messageIds: number[];
     shouldDeleteForAll?: boolean;
   } & WithTabId;
+  deleteParticipantHistory: {
+    peerId: string;
+    chatId: string;
+  } & WithTabId;
   markMessageListRead: {
     maxId: number;
   } & WithTabId;
@@ -651,7 +656,11 @@ export interface ActionPayloads {
   replyToNextMessage: {
     targetIndexDelta: number;
   } & WithTabId;
-  deleteChatUser: { chatId: string; userId: string } & WithTabId;
+  deleteChatUser: {
+    chatId: string;
+    userId: string;
+    shouldRevokeHistory?: boolean;
+  } & WithTabId;
   deleteChat: { chatId: string } & WithTabId;
 
   // chat creation
@@ -1092,6 +1101,9 @@ export interface ActionPayloads {
   } & WithTabId;
   openPrivateChannel: {
     id: string;
+    threadId?: ThreadId;
+    messageId?: number;
+    commentId?: number;
   } & WithTabId;
   loadFullChat: {
     chatId: string;
@@ -1823,6 +1835,7 @@ export interface ActionPayloads {
   clearRecentCustomEmoji: undefined;
   loadFeaturedEmojiStickers: undefined;
   loadDefaultStatusIcons: undefined;
+  loadUserCollectibleStatuses: undefined;
   loadRecentEmojiStatuses: undefined;
 
   // Bots
@@ -2285,9 +2298,9 @@ export interface ActionPayloads {
   closePaidReactionModal: WithTabId | undefined;
 
   openDeleteMessageModal: ({
-    message?: ApiMessage;
+    chatId: string;
+    messageIds: number[];
     isSchedule?: boolean;
-    album?: IAlbum;
     onConfirm?: NoneToVoidFunction;
   } & WithTabId);
   closeDeleteMessageModal: WithTabId | undefined;
@@ -2307,6 +2320,7 @@ export interface ActionPayloads {
   } & WithTabId;
   closeGiftModal: WithTabId | undefined;
   sendStarGift: StarGiftInfo & WithTabId;
+
   openGiftInfoModalFromMessage: {
     chatId: string;
     messageId: number;
@@ -2318,6 +2332,7 @@ export interface ActionPayloads {
     gift: ApiStarGift;
   }) & WithTabId;
   closeGiftInfoModal: WithTabId | undefined;
+
   openGiftUpgradeModal: {
     giftId: string;
     peerId?: string;
@@ -2329,23 +2344,40 @@ export interface ActionPayloads {
     shouldKeepOriginalDetails?: boolean;
     upgradeStars?: number;
   } & WithTabId;
+
   openGiftWithdrawModal: {
     gift: ApiSavedStarGift;
   } & WithTabId;
   clearGiftWithdrawError: WithTabId | undefined;
   closeGiftWithdrawModal: WithTabId | undefined;
+  openGiftStatusInfoModal: {
+    emojiStatus: ApiEmojiStatusCollectible;
+  } & WithTabId;
+  closeGiftStatusInfoModal: WithTabId | undefined;
   processStarGiftWithdrawal: {
     gift: ApiInputSavedStarGift;
     password: string;
   } & WithTabId;
+
+  openGiftTransferModal: {
+    gift: ApiSavedStarGift;
+  } & WithTabId;
+  transferGift: {
+    gift: ApiInputSavedStarGift;
+    transferStars?: number;
+    recipientId: string;
+  } & WithTabId;
+  closeGiftTransferModal: WithTabId | undefined;
+
   loadPeerSavedGifts: {
     peerId: string;
     shouldRefresh?: boolean;
-  };
+    withTransition?: boolean;
+  } & WithTabId;
   changeGiftVisibility: {
     gift: ApiInputSavedStarGift;
     shouldUnsave?: boolean;
-  };
+  } & WithTabId;
   convertGiftToStars: {
     gift: ApiInputSavedStarGift;
   } & WithTabId;
@@ -2357,8 +2389,7 @@ export interface ActionPayloads {
   closeStarsGiftModal: WithTabId | undefined;
 
   setEmojiStatus: {
-    emojiStatusId: string;
-    expires?: number;
+    emojiStatus: ApiEmojiStatusType;
     referrerWebAppKey?: string;
   } & WithTabId;
   openSuggestedStatusModal: {
@@ -2368,6 +2399,14 @@ export interface ActionPayloads {
     duration?: number;
   } & WithTabId;
   closeSuggestedStatusModal: WithTabId | undefined;
+
+  updateGiftProfileFilter: {
+    peerId: string;
+    filter: Partial<GiftProfileFilterOptions>;
+  } & WithTabId;
+  resetGiftProfileFilter: {
+    peerId: string;
+  } & WithTabId;
 
   // Invoice
   openInvoice: Exclude<ApiInputInvoice, ApiInputInvoiceStarGift> & WithTabId;
